@@ -1,6 +1,9 @@
 module XMonad.Actions.XHints.Hint where
 
 import XMonad.Actions.XHints.State
+import Data.Typeable
+import XMonad
 
-xhint hint = do
-  text <- hint
+runXHint :: Typeable v => (String -> XHint v) -> X ()
+runXHint hint = undefined
+  

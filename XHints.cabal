@@ -19,13 +19,17 @@ library
   exposed-modules:     XMonad.Actions.XHints
   other-modules:       XMonad.Actions.XHints.Render
                        XMonad.Actions.XHints.State
+                       XMonad.Actions.XHints.Translate
   -- other-extensions:    
-  build-depends:       base >=4.7 && <4.8
+  build-depends:       base >=4.7 && <4.9
                        ,text >= 1.2
-                       ,xmonad >= 0.11
+                       , xmonad >= 0.11
                        ,wreq >= 0.4.0.0
                        ,lens >= 4.0.0
                        ,bytestring >= 0.10.0
-                       ,containers >= 0.5.5.0                     
+                       ,containers >= 0.5.5.0
+                       , transformers >= 0.3.0.0
+                       , BingTranslate >= 0.1.0.0
+                       , mtl >= 2.2.0
   hs-source-dirs:      src
   default-language:    Haskell2010
