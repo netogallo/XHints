@@ -1,10 +1,14 @@
 {-# Language OverloadedStrings #-}
 module XMonad.Actions.XHints.Render where
 
-import XMonad
+import XMonad hiding (drawString)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Control.Monad (foldM_)
+import Foreign.C
+import Graphics.X11.Xlib.Types
+import qualified Data.Text.Foreign as TF
+import Graphics.X11.Xft
 
 lineHeight = 20
 lineChars = 50
@@ -21,13 +25,15 @@ takeLine txt
     
   where
     fstLen = T.length (T.takeWhile (not . isSpc) txt)
-    consume acc rest =
-      let next = T.takeWhile (not . isSpc) rest
-          rest' = T.drop (T.length next) rest
-      in if T.length acc + T.length next < lineChars then
-           consume (T.concat [acc,next,T.take 1 rest']) $ T.drop 1 rest'
-         else
-           Just (acc,rest)
+    consume acc rest
+      | rest == T.empty = Just (acc,rest)
+      | otherwise =
+        let next = T.takeWhile (not . isSpc) rest
+            rest' = T.drop (T.length next) rest
+        in if T.length acc + T.length next < lineChars then
+             consume (T.concat [acc,next,T.take 1 rest']) $ T.drop 1 rest'
+           else
+             Just (acc,rest)
 
 takeLines :: Text -> [Text]
 takeLines txt = case takeLine txt of
@@ -35,9 +41,20 @@ takeLines txt = case takeLine txt of
   Nothing -> []
 
 hintDimensions :: Text -> ([Text],Int,Int)
-hintDimensions msg = (txt, lineChars * pxChar, length txt * lineHeight)
+hintDimensions msg = (txt, lineChars * pxChar, 1 + length txt * lineHeight)
   where
     txt = takeLines msg
+
+mkUnmanagedWindow :: Display -> Screen -> Window -> Position
+                  -> Position -> Dimension -> Dimension -> IO Window
+mkUnmanagedWindow d s rw x y w h = do
+  let visual = defaultVisualOfScreen s
+      attrmask = cWOverrideRedirect
+  allocaSetWindowAttributes $
+         \attributes -> do
+           set_override_redirect attributes True
+           createWindow d rw x y w h 0 (defaultDepthOfScreen s)
+                        inputOutput visual attrmask attributes
 
 hintWindow :: Int -> Int -> X (Window,GC)
 hintWindow w h = do
@@ -45,27 +62,41 @@ hintWindow w h = do
   let win = defaultRootWindow dpy
       blk = blackPixel dpy $ defaultScreen dpy
       wht = whitePixel dpy $ defaultScreen dpy
+      scn = defaultScreenOfDisplay dpy
   (_,_,_,_,_,x,y,_) <- liftIO $ queryPointer dpy win
   nw <- liftIO $ do
-    nw <- createSimpleWindow dpy win (fromIntegral x) (fromIntegral y) (fromIntegral w) (fromIntegral h) 1 blk wht
-    mapWindow dpy nw
-    return nw
-  manage nw
+    -- nw <- mkUnmanagedWindow dpy scn win (fromIntegral x) (fromIntegral y) (fromIntegral w) (fromIntegral h)
+    nw' <- createSimpleWindow dpy win (fromIntegral x) (fromIntegral y) (fromIntegral w) (fromIntegral h) 1 blk wht
+    mapWindow dpy nw'
+    return nw'
+--  manage nw
   gc <- liftIO $ createGC dpy nw
   return (nw,gc)
-  
+
+-- drawString :: Display -> Drawable -> GC -> Position -> Position -> T.Text -> IO ()
+-- drawString display d gc x y str =
+--         TF.withCStringLen str $ \ (c_str, len) ->
+--         xDrawString display d gc x y c_str (fromIntegral len)
+-- foreign import ccall unsafe "HsXlib.h XDrawString"
+--         xDrawString     :: Display -> Drawable -> GC -> Position -> Position -> CString -> CInt -> IO ()
+
+goodColor = Color 1 0 0 0 0
+
+writeMessages :: Window -> GC -> [Text] -> X ()
 writeMessages win gc msgs = do
   dpy <- asks display
+  trace $ "writing" ++ show msgs
   let
     cata :: Int -> Text -> IO Int
     cata y msg = do
-      drawString dpy win gc 0 (fromIntegral y) (T.unpack msg)
+      -- drawString dpy win gc (fromIntegral $ pxChar * 1) (fromIntegral y) msg
       return (y + lineHeight)
-  liftIO $ foldM_ cata 0 msgs
+  liftIO $ foldM_ cata lineHeight msgs
   
 showHint :: Text -> X (Window,GC)
 showHint message = do
   (win,gc) <- hintWindow w h
+  trace "about to write"
   writeMessages win gc msgs
   return (win,gc)
   where (msgs,w,h) = hintDimensions message

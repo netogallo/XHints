@@ -11,7 +11,7 @@ import Control.Monad.IO.Class (MonadIO,liftIO)
 import Data.ByteString (ByteString)
 
 data ActionState = ActionState {
-  window :: Maybe Window
+  window :: Maybe (Window,GC)
   } deriving Typeable
 
 data XHintsState = XHintsState{
