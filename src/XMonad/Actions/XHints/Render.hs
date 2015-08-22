@@ -9,6 +9,8 @@ import Foreign.C
 import Graphics.X11.Xlib.Types
 import qualified Data.Text.Foreign as TF
 import Graphics.X11.Xft
+import qualified Data.ByteString as BS
+import Codec.Binary.UTF8.String
 
 lineHeight = 20
 lineChars = 50
@@ -73,30 +75,44 @@ hintWindow w h = do
   gc <- liftIO $ createGC dpy nw
   return (nw,gc)
 
--- drawString :: Display -> Drawable -> GC -> Position -> Position -> T.Text -> IO ()
--- drawString display d gc x y str =
---         TF.withCStringLen str $ \ (c_str, len) ->
---         xDrawString display d gc x y c_str (fromIntegral len)
--- foreign import ccall unsafe "HsXlib.h XDrawString"
---         xDrawString     :: Display -> Drawable -> GC -> Position -> Position -> CString -> CInt -> IO ()
+drawString :: Display -> Drawable -> GC -> String -> Dimension -> Dimension -> Position -> Position -> T.Text -> IO ()
+drawString display d gc colorStr w h x y str = do
+  px <- createPixmap display d w h (defaultDepth display 0)
+  bm <- xftDrawCreateBitmap display px
+  font <- xftFontOpen display scn "Liberation Serif"
+  -- color <- withXftColorName display visual bitmap "black" return
+  let putMsg drw = withXftColorName display visual bitmap colorStr $ \color -> xftDrawString drw color font x y $ (T.unpack str)
+  withXftDraw display d visual bitmap putMsg
+  
+  where
+    scn = defaultScreenOfDisplay display
+    visual = defaultVisual display 0
+    bitmap = defaultColormap display 0
 
-goodColor = Color 1 0 0 0 0
+msgGoodColor :: String
+msgGoodColor = "black"
 
-writeMessages :: Window -> GC -> [Text] -> X ()
-writeMessages win gc msgs = do
+msgErrColor :: String
+msgErrColor = "red"
+
+writeMessages :: Window -> GC -> String -> Dimension -> Dimension -> [Text] -> X ()
+writeMessages win gc color w h msgs = do
   dpy <- asks display
-  trace $ "writing" ++ show msgs
   let
     cata :: Int -> Text -> IO Int
     cata y msg = do
-      -- drawString dpy win gc (fromIntegral $ pxChar * 1) (fromIntegral y) msg
+      drawString dpy win gc color w h (fromIntegral $ pxChar * 1) (fromIntegral y) msg
       return (y + lineHeight)
   liftIO $ foldM_ cata lineHeight msgs
   
-showHint :: Text -> X (Window,GC)
-showHint message = do
+showHint :: Either Text Text -> X (Window,GC)
+showHint message' = do
   (win,gc) <- hintWindow w h
   trace "about to write"
-  writeMessages win gc msgs
+  writeMessages win gc color (fromIntegral w) (fromIntegral h) msgs
   return (win,gc)
-  where (msgs,w,h) = hintDimensions message
+  where
+    (message,color) = case message' of
+      Right m -> (m,msgGoodColor)
+      Left m -> (m,msgErrColor)
+    (msgs,w,h) = hintDimensions message

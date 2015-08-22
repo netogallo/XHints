@@ -9,6 +9,7 @@ import Control.Applicative (Applicative(..),(<$>))
 import Control.Monad       (liftM, ap)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Data.ByteString (ByteString)
+import Data.Text (Text)
 
 data ActionState = ActionState {
   window :: Maybe (Window,GC)
@@ -22,7 +23,7 @@ data XHintConf = XHintConf {}
 
 newtype XHints v a = XHints{runXHints :: XHintsState -> X (a,ActionState)}
 
-type XHint v = XHints v (Either String String)
+type XHint v = XHints v (Either Text Text)
 
 emptyState = ActionState{window = Nothing}
 

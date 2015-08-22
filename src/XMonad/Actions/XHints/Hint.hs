@@ -51,16 +51,16 @@ getState _ = do
       xHintsTy = typeOf (undefined :: XHintsState)
   return $ state'{actions=M.insert ident as (actions state')}
   
-runXHint :: forall v . Typeable v => (String -> XHint v) -> X ()
+runXHint :: forall v . Typeable v => (T.Text -> XHint v) -> X ()
 runXHint hint = do
   state <- getState (undefined :: v)
   state' <- case window (actions state M.! ident) of
     Nothing -> do
       sel <- getSelection
       trace (show sel)
-      (msg,as) <- runXHints (hint sel) state
+      (msg,as) <- runXHints (hint $ T.pack sel) state
       trace (show msg)
-      (w,gc) <- showHint (T.pack $ show msg)
+      (w,gc) <- showHint msg -- (T.pack $ show msg)
       return $ as{window=Just (w,gc)}
     Just (w,_) -> do
       dpy <- asks display
