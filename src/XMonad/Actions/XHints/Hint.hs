@@ -11,6 +11,7 @@ import qualified Data.Text as T
 import Codec.Binary.UTF8.String (decode)
 import Control.Exception.Extensible as E (catch,SomeException(..))
 import Data.Maybe (fromMaybe)
+import Control.Monad.State.Strict
 
 -- | Returns a String corresponding to the current mouse selection in X;
 --   if there is none, an empty string is returned.
@@ -36,8 +37,8 @@ getSelection = io $ do
                return $ decode . map fromIntegral . fromMaybe [] $ res
        else destroyWindow dpy win >> return ""
 
-getState :: forall v . Typeable v => v -> X XHintsState
-getState _ = do
+getState :: forall v s . (Typeable v, Typeable s) => v -> Maybe s -> X XHintsState
+getState _ def = do
   XState {extensibleState = ex} <- get
   let state' = case M.lookup (show xHintsTy) ex of
         Nothing -> (initialValue :: XHintsState)
@@ -46,27 +47,34 @@ getState _ = do
         x -> undefined
       ident = typeOf (undefined :: v)
       as = case M.lookup ident (actions state') of
-        Nothing -> emptyState
+        Nothing -> (emptyState,Store def)
         Just s -> s
       xHintsTy = typeOf (undefined :: XHintsState)
   return $ state'{actions=M.insert ident as (actions state')}
   
-runXHint :: forall v . Typeable v => (T.Text -> XHint v) -> X ()
+runXHint :: forall v s . (Typeable s, Typeable v) => (T.Text -> XHint s v) -> X ()
 runXHint hint = do
-  state <- getState (undefined :: v)
-  state' <- case window (actions state M.! ident) of
+  state <- getState (undefined :: v) (Nothing :: Maybe s)
+  let (actionState,store) =
+        let (as',str') = actions state M.! ident
+        in case str' of
+          Store str -> case cast str of
+            Just store' -> (as',store' :: Maybe s)
+            Nothing -> (as',Nothing)
+            
+  (state',store'') <- case window actionState of
     Nothing -> do
       sel <- getSelection
       trace (show sel)
-      (msg,as) <- runXHints (hint $ T.pack sel) state
+      ((msg,store'),as) <- runXHints (runStateT (hint $ T.pack sel) store) actionState
       trace (show msg)
       (w,gc) <- showHint msg -- (T.pack $ show msg)
-      return $ as{window=Just (w,gc)}
+      return $ (as{window=Just (w,gc)},store')
     Just (w,_) -> do
       dpy <- asks display
       liftIO $ destroyWindow dpy w
-      return $ (actions state M.! ident){window=Nothing}
-  let state'' = state{actions=M.insert ident state' (actions state)}
+      return $ (actionState{window=Nothing},store)
+  let state'' = state{actions=M.insert ident (state',Store store'') (actions state)}
   modify (\s -> s{extensibleState = M.insert (show xHintsTy) (Right (StateExtension state'')) $ extensibleState s})
   where
     xHintsTy = typeOf (undefined :: XHintsState)
